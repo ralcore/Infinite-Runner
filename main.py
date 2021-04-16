@@ -30,8 +30,10 @@ class player(pygame.sprite.Sprite):
         self.hitbox = self.surf.get_rect()
 
         self.pos = pygame.Vector2()
+        self.oldpos = pygame.Vector2()
         self.vel = pygame.Vector2()
         self.pos.xy = 100, 100
+        self.oldpos.xy = self.pos.xy
         self.vel.xy = 0, 0
 
         self.grounded = False
@@ -39,11 +41,7 @@ class player(pygame.sprite.Sprite):
     def update(self):
         self.vel.y += 0.03
         self.vel.y = self.vel.y/1.01
-        for platform in sgPlatforms:
-            if self.checkCollision():
-                self.collidePlatform(platform)
-                print("hello")
-        self.oldpos.xy = self.vel.xy
+        self.oldpos.xy = self.pos.xy
         self.pos.xy += self.vel.xy * dt
         self.checkCollision()
         self.rect.topleft = [self.pos.x, self.pos.y]
@@ -57,17 +55,43 @@ class player(pygame.sprite.Sprite):
 
         # Using clipline to clip the line between new and old pos into each rectangle
         # See this documentation for more info: https://www.pygame.org/docs/ref/rect.html#pygame.Rect.clipline
-        for entity in sgPlatforms:
-            self.clippedLine = entity.hitbox.clipline(self.oldpos, self.newpos)
-            if self.clippedLine:
-                self.start, self.end = self.clippedLine
-                self.clx1, self.cly1 = self.start
-                self.clx2, self.cly2 = self.end
-                if self.cly1 == entity.hitbox.top:
-                    # We know that the player has collided with the top of the rect, so we call that function:
-                    self.collidePlatformTop(entity)
+        for platform in sgPlatforms:
+            # Checking for a top collision using three points of potential contact:
+            if self.getClipLine("up", 0, 1, platform) or self.getClipLine("up", 0.5, 1, platform) or self.getClipLine("up", 1, 1, platform):
+                self.collidePlatformTop(platform)
+            # Left of platform collision, same deal:
+            elif self.getClipLine("left", 1, 0, platform) or self.getClipLine("left", 1, 0.5, platform) or self.getClipLine("left", 1, 1, platform):
+                self.collidePlatformLeft(platform)
+            # Right of platform:
+            elif self.getClipLine("right", 0, 0, platform) or self.getClipLine("right", 0, 0.5, platform) or self.getClipLine("right", 0, 1, platform):
+                self.collidePlatformRight(platform)
+            # And finally, the bottom:
+            elif self.getClipLine("down", 0, 0, platform) or self.getClipLine("down", 0, 0.5, platform) or self.getClipLine("down", 0, 1, platform):
+                self.collidePlatformBottom(platform)
 
-
+    def getClipLine(self, checkedSide, xOffset, yOffset, platform):
+        # checkedSide specifies whether we're checking a vertical collision or a horizontal one
+        # In effect, whether to consider the resultant X or Y value of the line and which side of the plat to check
+        # xOffset and yOffset are multiples of the player height and width
+        # For example, to check from the middle of the player's width, xOffset should be 0.5
+        clippedLine = platform.hitbox.clipline(self.oldpos.x + self.hitbox.width * xOffset,
+                                               self.oldpos.y + self.hitbox.height * yOffset,
+                                               self.pos.x + self.hitbox.width * xOffset,
+                                               self.pos.y + self.hitbox.height * yOffset)
+        if clippedLine:
+            # Trimming to the relevant coordinate value
+            pygame.draw.line(gameDisplay, 'blue', clippedLine[0], clippedLine[1], 4)
+            if checkedSide == "up":
+                return True if clippedLine[0][1] == platform.hitbox.top else False
+            if checkedSide == "down":
+                return True if clippedLine[0][1] == platform.hitbox.bottom else False
+            if checkedSide == "left":
+                return True if clippedLine[0][0] == platform.hitbox.left else False
+            if checkedSide == "right":
+                return True if clippedLine[0][0] == platform.hitbox.right - 1 else False
+        else:
+            # No collision, guaranteed a false call
+            return False
 
     def move(self, direction):
         pressed_keys = pygame.key.get_pressed()
@@ -82,11 +106,23 @@ class player(pygame.sprite.Sprite):
             self.grounded = False
 
     def collidePlatformTop(self, platform):
-        if self.vel.y > 0 & platform.hitbox.top <= self.hitbox.bottom <= platform.hitbox.top + 30:
-            self.vel.y = 0
-            # TODO: Fix reverse coyote time on this, no idea why this doesn't align the box
-            self.hitbox.bottom = platform.hitbox.top
-            self.grounded = True
+        self.vel.y = 0
+        self.pos.y = platform.hitbox.top - self.hitbox.height
+        self.grounded = True
+
+    def collidePlatformLeft(self, platform):
+        self.vel.x = 0
+        self.pos.x = platform.hitbox.left - self.hitbox.width
+        self.grounded = True
+
+    def collidePlatformRight(self, platform):
+        self.vel.x = 0
+        self.pos.x = platform.hitbox.right
+        self.grounded = True
+
+    def collidePlatformBottom(self, platform):
+        self.vel.y = 0
+        self.pos.y = platform.hitbox.bottom
 
 gameRunning = True
 currentPlayer = player()
@@ -95,6 +131,7 @@ testingPlatform2 = platform(64, 256, 500, 400)
 
 sgPlatforms = pygame.sprite.Group()
 sgPlatforms.add(testingPlatform)
+sgPlatforms.add(testingPlatform2)
 
 sgPlayer = pygame.sprite.Group()
 sgPlayer.add(currentPlayer)
