@@ -12,51 +12,47 @@ class platform(pygame.sprite.Sprite):
     def __init__(self, height, width, x1, y1, topStyle):
         super().__init__()
         self.surf = pygame.Surface([width, height])
-        self.surf.fill('black')
         # Texturing platform's surface
-        self.texture("top", topStyle)
+        self.texture()
         self.rect = self.surf.get_rect()
         self.rect.topleft = [x1, y1]
         self.hitbox = self.surf.get_rect()
         self.hitbox.topleft = [x1, y1]
 
-    def texture(self, side, style):
-        # This function takes two inputs which describe the style a given side of the platform should have.
-        # "textured": a textured line, for use where we want the player to land
-        # "filled": a full white line, used where the player can land, but probably shouldn't
-        # "dotted": a dotted white/grey/black line, used to lead into pits and the sort
-        # "blank": a blank line, only to ever be used out of bounds.
+    def texture(self):
+        # This function directly draws to the surface to create a pixel-like texture,
+        # without the need to store .pngs.
         # These graphics are produced dynamically using pg's PixelArray functions
         # I wouldn't have to do this if pygame had native 9-patch support, but here we are LOL
-        self.surf.fill([255, 255, 255])
+        self.surf.fill([0, 0, 0])
         pxArray = pygame.PixelArray(self.surf)
-        if side == "top":
-            if style == "textured":
-                pxArray[0:8] = (255, 255, 255)
-                pxArray[0:8, 24::32] = (0, 0, 0)
-                pxArray[8:16, 24::32] = (255, 255, 255)
-                pxArray[16:24, 16::32] = (255, 255, 255)
-            if style == "filled":
-                pxArray[0:8] = (255, 255, 255)
-            if style == "dotted":
-                pxArray[0:8] = (255, 255, 255)
-                pxArray[0:8, 64:128:32] = (0, 0, 0)
-                pxArray[0:8, 128::16] = (0, 0, 0)
-            if style == "blank":
-                pxArray[0:8] = (0, 0, 0)
+        WHITE_END = 4
+        LG_END = 8
+        DG_END = 12
+        # Left side
+        pxArray[:WHITE_END] = (255, 255, 255)
+        pxArray[WHITE_END:LG_END] = (160, 160, 160)
+        pxArray[LG_END:DG_END] = (80, 80, 80)
+        # Right side
+        pxArray[-DG_END:-LG_END] = (80, 80, 80)
+        pxArray[-LG_END:-WHITE_END] = (160, 160, 160)
+        pxArray[-WHITE_END:] = (255, 255, 255)
+        # Top side
+        pxArray[:, :WHITE_END] = (255, 255, 255)
+        pxArray[4:-4, WHITE_END:LG_END] = (160, 160, 160)
+        pxArray[8:-8, LG_END:DG_END] = (80, 80, 80)
+        # Bottom side
+        pxArray[8:-8, -DG_END:-LG_END] = (80, 80, 80)
+        pxArray[4:-4, -LG_END:-WHITE_END] = (160, 160, 160)
+        pxArray[:, -WHITE_END:] = (255, 255, 255)
+        pxArray.close()
 
     def update(self):
-        print("hello")
-        # pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
+        pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
 
 class player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.surf = pygame.Surface([64, 64])
-        self.surf.fill([255, 255, 255])
-        self.rect = self.surf.get_rect()
-        self.hitbox = self.surf.get_rect()
-
         self.pos = pygame.Vector2()
         self.oldpos = pygame.Vector2()
         self.vel = pygame.Vector2()
@@ -64,11 +60,56 @@ class player(pygame.sprite.Sprite):
         self.oldpos.xy = self.pos.xy
         self.vel.xy = 0, 0
 
+        self.surf = pygame.Surface([64, 64])
+        self.texture()
+        self.surf.fill([255, 255, 255])
+        self.rect = self.surf.get_rect()
+        self.hitbox = self.surf.get_rect()
+
         self.grounded = "airborne"
+
+    def texture(self):
+        # Very similar to the platform's texture function, but now with eyes
+        self.surf.fill([0, 0, 0])
+        pxArray = pygame.PixelArray(self.surf)
+        WHITE_END = 4
+        LG_END = 8
+        DG_END = 12
+        # Left side
+        pxArray[:WHITE_END] = (255, 255, 255)
+        pxArray[WHITE_END:LG_END] = (160, 160, 160)
+        pxArray[LG_END:DG_END] = (80, 80, 80)
+        # Right side
+        pxArray[-DG_END:-LG_END] = (80, 80, 80)
+        pxArray[-LG_END:-WHITE_END] = (160, 160, 160)
+        pxArray[-WHITE_END:] = (255, 255, 255)
+        # Top side
+        pxArray[:, :WHITE_END] = (255, 255, 255)
+        pxArray[4:-4, WHITE_END:LG_END] = (160, 160, 160)
+        pxArray[8:-8, LG_END:DG_END] = (80, 80, 80)
+        # Bottom side
+        pxArray[8:-8, -DG_END:-LG_END] = (80, 80, 80)
+        pxArray[4:-4, -LG_END:-WHITE_END] = (160, 160, 160)
+        pxArray[:, -WHITE_END:] = (255, 255, 255)
+        # Setting eye "direction"
+        eyepos = pygame.Vector2()
+        eyepos.xy = (pxArray.shape[0]/2, pxArray.shape[1]/2)
+        if self.vel.x < 0:
+            eyepos.x -= 16
+        else:
+            eyepos.x += 16
+        # Then, setting how high up/down the player is looking
+        eyepos.y += self.vel.y * 20
+        # Drawing left eye
+        print(eyepos)
+        pxArray[int(eyepos.x-16):int(eyepos.x-8), int(eyepos.y-4):int(eyepos.y+4)] = (255, 255, 255)
+        # Drawing right eye
+        pxArray[int(eyepos.x+8):int(eyepos.x+16), int(eyepos.y-4):int(eyepos.y+4)] = (255, 255, 255)
 
     def update(self):
         self.updateMovement()
         self.checkCollision()
+        self.texture()
         # Updating player visual position on-screen
         self.rect.topleft = [self.pos.x, self.pos.y]
         self.hitbox.topleft = [self.pos.x, self.pos.y]
