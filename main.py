@@ -1,23 +1,29 @@
 # Documentation used:
 # https://coderslegacy.com/python/pygame-platformer-game-development/
 # https://www.pygame.org/docs/
+# https://stackoverflow.com/questions/20842801/how-to-display-text-in-pygame
+# https://www.1001fonts.com/thirteen-pixel-fonts-font.html
 
 # SETUP 
 import pygame
+import pygame.freetype
 pygame.init()
-gameDisplay = pygame.display.set_mode((800, 600))
+gameDisplay = pygame.display.set_mode((640, 480))
 pygame.display.set_caption('My Game...')
+freeTypeFont = pygame.freetype.Font("Thirteen-Pixel-Fonts.ttf", 72)
+
 
 class platform(pygame.sprite.Sprite):
-    def __init__(self, height, width, x1, y1, topStyle):
+    def __init__(self, height, width, x1, y1):
         super().__init__()
         self.surf = pygame.Surface([width, height])
         # Texturing platform's surface
         self.texture()
+        # Each X positional value gets an offset of 640 added automatically, so that they spawn off-screen by default.
         self.rect = self.surf.get_rect()
-        self.rect.topleft = [x1, y1]
+        self.rect.topleft = [x1 + 640, y1]
         self.hitbox = self.surf.get_rect()
-        self.hitbox.topleft = [x1, y1]
+        self.hitbox.topleft = [x1 + 640, y1]
 
     def texture(self):
         # This function directly draws to the surface to create a pixel-like texture,
@@ -49,6 +55,20 @@ class platform(pygame.sprite.Sprite):
 
     def update(self):
         pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
+        print(currentLevelController.moveSpeed)
+        self.rect.topleft = [self.rect.topleft[0] - currentLevelController.moveSpeed, self.rect.topleft[1]]
+        self.hitbox.topleft = [self.hitbox.topleft[0] - currentLevelController.moveSpeed, self.hitbox.topleft[1]]
+
+
+class checkpoint(platform):
+    def __init__(self, height, width, x1, y1):
+        super().__init__(height, width, x1, y1)
+
+    def update(self):
+        if self.rect.topleft[0] + self.rect.width == 640:
+            currentLevelController.levelComplete()
+        super().update()
+
 
 class player(pygame.sprite.Sprite):
     def __init__(self):
@@ -101,7 +121,6 @@ class player(pygame.sprite.Sprite):
         # Then, setting how high up/down the player is looking
         eyepos.y += self.vel.y * 20
         # Drawing left eye
-        print(eyepos)
         pxArray[int(eyepos.x-16):int(eyepos.x-8), int(eyepos.y-4):int(eyepos.y+4)] = (255, 255, 255)
         # Drawing right eye
         pxArray[int(eyepos.x+8):int(eyepos.x+16), int(eyepos.y-4):int(eyepos.y+4)] = (255, 255, 255)
@@ -110,6 +129,8 @@ class player(pygame.sprite.Sprite):
         self.updateMovement()
         self.checkCollision()
         self.texture()
+        # Scrolling effect
+        self.pos.x -= currentLevelController.moveSpeed
         # Updating player visual position on-screen
         self.rect.topleft = [self.pos.x, self.pos.y]
         self.hitbox.topleft = [self.pos.x, self.pos.y]
@@ -117,19 +138,20 @@ class player(pygame.sprite.Sprite):
 
     def checkCollision(self):
         # Checks all 4 sides with three contact points using getClipLine to call the respective collidePlatform func
-        for platform in sgPlatforms:
-            # Checking for a top collision using three points of potential contact:
-            if self.getClipLine("up", 0, 1, platform) or self.getClipLine("up", 0.5, 1, platform) or self.getClipLine("up", 1, 1, platform):
-                self.collidePlatformTop(platform)
-            # Left of platform collision, same deal:
-            elif self.getClipLine("left", 1, 0, platform) or self.getClipLine("left", 1, 0.5, platform) or self.getClipLine("left", 1, 1, platform):
-                self.collidePlatformLeft(platform)
-            # Right of platform:
-            elif self.getClipLine("right", 0, 0, platform) or self.getClipLine("right", 0, 0.5, platform) or self.getClipLine("right", 0, 1, platform):
-                self.collidePlatformRight(platform)
-            # And finally, the bottom:
-            elif self.getClipLine("down", 0, 0, platform) or self.getClipLine("down", 0.5, 0, platform) or self.getClipLine("down", 1, 0, platform):
-                self.collidePlatformBottom(platform)
+        for spriteGroup in currentLevelController.loadedPlats:
+            for platform in spriteGroup:
+                # Checking for a top collision using three points of potential contact:
+                if self.getClipLine("up", 0, 1, platform) or self.getClipLine("up", 0.5, 1, platform) or self.getClipLine("up", 1, 1, platform):
+                    self.collidePlatformTop(platform)
+                # Left of platform collision, same deal:
+                elif self.getClipLine("left", 1, 0, platform) or self.getClipLine("left", 1, 0.5, platform) or self.getClipLine("left", 1, 1, platform):
+                    self.collidePlatformLeft(platform)
+                # Right of platform:
+                elif self.getClipLine("right", 0, 0, platform) or self.getClipLine("right", 0, 0.5, platform) or self.getClipLine("right", 0, 1, platform):
+                    self.collidePlatformRight(platform)
+                # And finally, the bottom:
+                elif self.getClipLine("down", 0, 0, platform) or self.getClipLine("down", 0.5, 0, platform) or self.getClipLine("down", 1, 0, platform):
+                    self.collidePlatformBottom(platform)
 
     def getClipLine(self, checkedSide, xOffset, yOffset, platform):
         # This function uses a clipped line and predicted position to check whether the player will intercept a platform
@@ -215,18 +237,58 @@ class player(pygame.sprite.Sprite):
         if self.pos.y < platform.hitbox.bottom:
             self.pos.y = platform.hitbox.bottom
 
+
+class levelController():
+    def __init__(self):
+        self.loadedPlats = []
+        self.addLevel("intro")
+        self.moveSpeed = 4
+        self.frameCounter = 0
+
+
+    def addLevel(self, level):
+        self.loadedPlats.append(pygame.sprite.Group())
+        if level == "intro":
+            # Since platforms load off-screen (640px right) by default, the tutorial area uses negative X values
+            # to offset it back on-screen when loaded at the start of the game.
+            # This solution isn't very expandable, but since it's a single edge case,
+            # I'm allowing it.
+            # Floor with some boxes to jump
+            self.loadedPlats[-1].add(checkpoint(500, 1850, -690, 400))
+            self.loadedPlats[-1].add(platform(50, 50, 60, 350))
+            self.loadedPlats[-1].add(platform(150, 50, 260, 250))
+            # Walljump section
+            self.loadedPlats[-1].add(platform(300, 50, 810, 100))
+            self.loadedPlats[-1].add(platform(350, 200, 460, -50))
+
+    def update(self):
+        self.frameCounter += 1
+        if self.frameCounter > 150:
+            self.moveSpeed += 0.01
+            self.frameCounter = 0
+        for spriteGroup in self.loadedPlats:
+            for platform in spriteGroup:
+                gameDisplay.blit(platform.surf, platform.rect)
+                platform.update()
+
+    def levelComplete(self):
+        self.addLevel("intro")
+
+
 gameRunning = True
 currentPlayer = player()
-testingPlatform = platform(64, 256, 100, 300, "textured")
-testingPlatform2 = platform(64, 256, 500, 400, "filled")
-testingPlatform3 = platform(64, 256, 300, 100, "dotted")
-testingPlatform4 = platform(256, 64, 700, 100, "empty")
+currentLevelController = levelController()
 
-sgPlatforms = pygame.sprite.Group()
-sgPlatforms.add(testingPlatform)
-sgPlatforms.add(testingPlatform2)
-sgPlatforms.add(testingPlatform3)
-sgPlatforms.add(testingPlatform4)
+# testingPlatform = platform(64, 256, 100, 300)
+# testingPlatform2 = platform(64, 256, 500, 400)
+# testingPlatform3 = platform(64, 256, 300, 100)
+# testingPlatform4 = platform(256, 64, 700, 100)
+#
+# sgPlatforms = pygame.sprite.Group()
+# sgPlatforms.add(testingPlatform)
+# sgPlatforms.add(testingPlatform2)
+# sgPlatforms.add(testingPlatform3)
+# sgPlatforms.add(testingPlatform4)
 
 sgPlayer = pygame.sprite.Group()
 sgPlayer.add(currentPlayer)
@@ -245,13 +307,14 @@ while gameRunning:
 
     gameDisplay.fill((0, 0, 0))
 
-    for entity in sgPlatforms:
-        gameDisplay.blit(entity.surf, entity.rect)
-        entity.update()
+    text_surface, rect = freeTypeFont.render("1.05x", (40, 40, 40))
+    gameDisplay.blit(text_surface, (20, 20))
+
     for entity in sgPlayer:
         gameDisplay.blit(entity.surf, entity.rect)
         entity.update()
 
+    currentLevelController.update()
     pygame.display.update()
 
 pygame.quit()
