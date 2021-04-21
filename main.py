@@ -3,15 +3,18 @@
 # https://www.pygame.org/docs/
 # https://stackoverflow.com/questions/20842801/how-to-display-text-in-pygame
 # https://www.1001fonts.com/thirteen-pixel-fonts-font.html
+# https://www.1001fonts.com/digitaldrip-font.html
 
 # SETUP 
 import pygame
 import pygame.freetype
+from random import *
 pygame.init()
 gameDisplay = pygame.display.set_mode((640, 480))
 pygame.display.set_caption('My Game...')
-freeTypeFont = pygame.freetype.Font("Thirteen-Pixel-Fonts.ttf", 72)
-
+# Setting up fonts
+freeTypeFontLarge = pygame.freetype.Font("Thirteen-Pixel-Fonts.ttf", 72)
+freeTypeFontSmall = pygame.freetype.Font("Anti.biz_DigitalDrip_TTF.ttf", 32)
 
 class platform(pygame.sprite.Sprite):
     def __init__(self, height, width, x1, y1):
@@ -54,19 +57,20 @@ class platform(pygame.sprite.Sprite):
         pxArray.close()
 
     def update(self):
-        pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
-        print(currentLevelController.moveSpeed)
-        self.rect.topleft = [self.rect.topleft[0] - currentLevelController.moveSpeed, self.rect.topleft[1]]
-        self.hitbox.topleft = [self.hitbox.topleft[0] - currentLevelController.moveSpeed, self.hitbox.topleft[1]]
+        # Debug to show hitbox: pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
+        self.rect.topleft = [self.rect.topleft[0] - currentGameController.currentLevelController.moveSpeed, self.rect.topleft[1]]
+        self.hitbox.topleft = [self.hitbox.topleft[0] - currentGameController.currentLevelController.moveSpeed, self.hitbox.topleft[1]]
 
 
 class checkpoint(platform):
     def __init__(self, height, width, x1, y1):
         super().__init__(height, width, x1, y1)
+        self.completed = False
 
     def update(self):
-        if self.rect.topleft[0] + self.rect.width == 640:
-            currentLevelController.levelComplete()
+        if self.rect.topleft[0] + self.rect.width < 640 and not self.completed:
+            currentGameController.currentLevelController.levelComplete()
+            self.completed = True
         super().update()
 
 
@@ -128,17 +132,24 @@ class player(pygame.sprite.Sprite):
     def update(self):
         self.updateMovement()
         self.checkCollision()
+        self.checkDeath()
         self.texture()
         # Scrolling effect
-        self.pos.x -= currentLevelController.moveSpeed
+        self.pos.x -= currentGameController.currentLevelController.moveSpeed
         # Updating player visual position on-screen
         self.rect.topleft = [self.pos.x, self.pos.y]
         self.hitbox.topleft = [self.pos.x, self.pos.y]
-        pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
+        # Debug to show hitbox: pygame.draw.rect(gameDisplay, (255, 0, 0), self.hitbox, 2)
+
+    def checkDeath(self):
+        if self.hitbox.topleft[0] < -8-self.hitbox.width or self.hitbox.topleft[1] > gameDisplay.get_width():
+            currentGameController.endGame()
+            # Put the player far off-screen
+            self.pos.y = -1000
 
     def checkCollision(self):
         # Checks all 4 sides with three contact points using getClipLine to call the respective collidePlatform func
-        for spriteGroup in currentLevelController.loadedPlats:
+        for spriteGroup in currentGameController.currentLevelController.loadedPlats:
             for platform in spriteGroup:
                 # Checking for a top collision using three points of potential contact:
                 if self.getClipLine("up", 0, 1, platform) or self.getClipLine("up", 0.5, 1, platform) or self.getClipLine("up", 1, 1, platform):
@@ -164,8 +175,7 @@ class player(pygame.sprite.Sprite):
                                                self.pos.x + self.hitbox.width * xOffset,
                                                self.pos.y + self.hitbox.height * yOffset)
         if clippedLine:
-            # Trimming to the relevant coordinate value
-            pygame.draw.line(gameDisplay, 'blue', clippedLine[0], clippedLine[1], 4)
+            # Debug code to show clipped line: pygame.draw.line(gameDisplay, 'blue', clippedLine[0], clippedLine[1], 4)
             # Checking if the trimmed line starts on the relevant edge
             # If it does, then the player will pass through the platform on the next frame,
             # so we need to proc a collision
@@ -208,7 +218,7 @@ class player(pygame.sprite.Sprite):
         self.vel.y = self.vel.y/1.01
         # Saving the old position to memory, and finally applying our velocity changes
         self.oldpos.xy = self.pos.xy
-        self.pos.xy += self.vel.xy * dt
+        self.pos.xy += self.vel.xy * currentGameController.dt
 
     def collidePlatformTop(self, platform):
         self.grounded = "grounded"
@@ -238,84 +248,186 @@ class player(pygame.sprite.Sprite):
             self.pos.y = platform.hitbox.bottom
 
 
-class levelController():
-    def __init__(self):
+class levelController:
+    def __init__(self, moveSpeed):
         self.loadedPlats = []
-        self.addLevel("intro")
-        self.moveSpeed = 4
+        self.addLevel(0)
+        self.moveSpeed = moveSpeed
         self.frameCounter = 0
 
+    def endGame(self):
+        # Setting framecounter to total frames lived, undoing resets
+        self.frameCounter += self.moveSpeed * 1000
+        self.moveSpeed = 0
 
     def addLevel(self, level):
         self.loadedPlats.append(pygame.sprite.Group())
-        if level == "intro":
+        if level == 0:
             # Since platforms load off-screen (640px right) by default, the tutorial area uses negative X values
             # to offset it back on-screen when loaded at the start of the game.
-            # This solution isn't very expandable, but since it's a single edge case,
-            # I'm allowing it.
+            # This solution isn't very expandable, but since it's a single edge case for a level that never gets
+            # loaded randomly, I'm allowing it.
             # Floor with some boxes to jump
             self.loadedPlats[-1].add(checkpoint(500, 1850, -690, 400))
-            self.loadedPlats[-1].add(platform(50, 50, 60, 350))
-            self.loadedPlats[-1].add(platform(150, 50, 260, 250))
+            self.loadedPlats[-1].add(platform(100, 50, 0, 100))
+            self.loadedPlats[-1].add(platform(100, 10, 20, 0))
+            self.loadedPlats[-1].add(platform(200, 200, 200, 200))
             # Walljump section
-            self.loadedPlats[-1].add(platform(300, 50, 810, 100))
-            self.loadedPlats[-1].add(platform(350, 200, 460, -50))
+            self.loadedPlats[-1].add(platform(350, 200, 500, -50))
+            self.loadedPlats[-1].add(platform(300, 200, 800, 100))
+        elif level == 1:
+            # Triple plats
+            self.loadedPlats[-1].add(platform(50, 200, 0, 400))
+            self.loadedPlats[-1].add(platform(50, 200, 400, 300))
+            self.loadedPlats[-1].add(checkpoint(50, 200, 800, 400))
+        elif level == 2:
+            # Forced drop-walljump to walljump to forced drop-walljump
+            self.loadedPlats[-1].add(platform(200, 100, 0, 400))
+            self.loadedPlats[-1].add(platform(350, 50, 225, -50))
+            self.loadedPlats[-1].add(platform(200, 100, 400, 400))
+            self.loadedPlats[-1].add(platform(350, 50, 625, 180))
+            self.loadedPlats[-1].add(platform(200, 100, 800, 400))
+            self.loadedPlats[-1].add(platform(350, 50, 1025, -50))
+            self.loadedPlats[-1].add(checkpoint(200, 100, 1200, 400))
+        elif level == 3:
+            # Walljump up and down a bit
+            self.loadedPlats[-1].add(platform(200, 200, 0, 400))
+            self.loadedPlats[-1].add(platform(500, 100, 100, -200))
+            self.loadedPlats[-1].add(platform(350, 100, 300, 150))
+            self.loadedPlats[-1].add(platform(250, 100, 300, -200))
+            self.loadedPlats[-1].add(platform(500, 100, 500, -200))
+            self.loadedPlats[-1].add(checkpoint(200, 200, 500, 400))
+        elif level == 4:
+            # Forced walljump storage
+            # Staircase
+            self.loadedPlats[-1].add(platform(300, 200, 0, 400))
+            self.loadedPlats[-1].add(platform(400, 100, 200, 300))
+            self.loadedPlats[-1].add(platform(200, 100, 300, 200))
+            # Overhang
+            self.loadedPlats[-1].add(platform(50, 50, 400, 200))
+            self.loadedPlats[-1].add(platform(25, 25, 400, 250))
+            # Big wall + final floor
+            self.loadedPlats[-1].add(platform(300, 100, 900, -50))
+            self.loadedPlats[-1].add(checkpoint(100, 300, 900, 400))
+        # elif level == 5:
+        #     # Forced walljump cannon - guaranteed the worst level LOL - commented out for your sanity
+        #     # Starting plat
+        #     self.loadedPlats[-1].add(platform(300, 400, 0, 400))
+        #     # Walljump cannon block
+        #     self.loadedPlats[-1].add(platform(65, 50, 350, 335))
+        #     # Left platform to walljump off of (for turning around after initial WJ)
+        #     self.loadedPlats[-1].add(platform(110, 50, 150, -50))
+        #     # Blind jumps, because I'm committed to this being a run killer at this point
+        #     self.loadedPlats[-1].add(platform(40, 40, 450, 40))
+        #     self.loadedPlats[-1].add(platform(40, 40, 600, 40))
+        #     self.loadedPlats[-1].add(platform(40, 40, 750, 40))
+        #     self.loadedPlats[-1].add(platform(40, 40, 900, 80))
+        #     self.loadedPlats[-1].add(platform(40, 40, 1200, 160))
+        #     self.loadedPlats[-1].add(platform(40, 40, 1600, 200))
+        #     self.loadedPlats[-1].add(checkpoint(40, 40, 2100, 240))
+
+    def removeOldLevel(self):
+        if len(self.loadedPlats) >= 4:
+            self.loadedPlats.pop(0)
 
     def update(self):
-        self.frameCounter += 1
-        if self.frameCounter > 150:
-            self.moveSpeed += 0.01
-            self.frameCounter = 0
+        if currentGameController.gameState == "playing":
+            self.frameCounter += 1
+            if self.frameCounter > 1000:
+                self.moveSpeed += 1
+                self.frameCounter = 0
         for spriteGroup in self.loadedPlats:
             for platform in spriteGroup:
                 gameDisplay.blit(platform.surf, platform.rect)
                 platform.update()
 
     def levelComplete(self):
-        self.addLevel("intro")
+        self.addLevel(randint(1, 4))
+        self.removeOldLevel()
 
 
+class gameController:
+    def __init__(self):
+        self.gameState = "title"
+        self.currentPlayer = player()
+        self.currentLevelController = levelController(0)
+        self.clock = pygame.time.Clock()
+        self.dt = 0
+
+    def startGame(self):
+        self.gameState = "playing"
+        self.currentPlayer = player()
+        self.currentLevelController = levelController(2)
+
+    def endGame(self):
+        self.gameState = "dead"
+        self.currentLevelController.endGame()
+
+    def update(self):
+        # 60fps lock
+        self.dt = self.clock.tick(60)
+
+        # If pressing escape, quit game
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                gameRunning = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    gameRunning = False
+
+        # We always fill the screen black
+        gameDisplay.fill((0, 0, 0))
+        # Main state machine
+        if self.gameState == "title":
+            self.drawTitleUI()
+            self.currentLevelController.update()
+            pressed_keys = pygame.key.get_pressed()
+            if pressed_keys[pygame.K_RETURN]:
+                self.startGame()
+        if self.gameState == "playing":
+            self.drawPlayingUI()
+            self.currentLevelController.update()
+            self.currentPlayer.update()
+            gameDisplay.blit(self.currentPlayer.surf, self.currentPlayer.rect)
+        elif self.gameState == "dead":
+            self.currentLevelController.update()
+            self.drawDeadUI()
+            pressed_keys = pygame.key.get_pressed()
+            if pressed_keys[pygame.K_RETURN]:
+                self.startGame()
+        pygame.display.update()
+
+    def drawPlayingUI(self):
+        text_surface, rect = freeTypeFontLarge.render(str(currentGameController.currentLevelController.moveSpeed / 2) + "x", (40, 40, 40))
+        gameDisplay.blit(text_surface, (20, 20))
+        text_surface, rect = freeTypeFontSmall.render(str(currentGameController.currentLevelController.moveSpeed * 1000 + currentGameController.currentLevelController.frameCounter) + "pts", (40, 40, 40))
+        gameDisplay.blit(text_surface, (630 - text_surface.get_width(), 10))
+
+    def drawDeadUI(self):
+        text_surface, rect = freeTypeFontLarge.render("whoops!", (140, 0, 50))
+        gameDisplay.blit(text_surface, (320-text_surface.get_width()/2, 200-text_surface.get_height()/2))
+        text_surface, rect = freeTypeFontSmall.render(("score: " + str(currentGameController.currentLevelController.frameCounter) + " - enter to reset"), (160, 50, 50))
+        gameDisplay.blit(text_surface, (320-text_surface.get_width()/2, 260-text_surface.get_height()/2))
+
+    def drawTitleUI(self):
+        text_surface, rect = freeTypeFontLarge.render("schmoovin'", (140, 0, 0))
+        gameDisplay.blit(text_surface, (320-text_surface.get_width()/2, 200-text_surface.get_height()/2))
+        text_surface, rect = freeTypeFontSmall.render("press enter to start", (140, 0, 50))
+        gameDisplay.blit(text_surface, (320-text_surface.get_width()/2, 280-text_surface.get_height()/2))
+
+
+currentGameController = gameController()
 gameRunning = True
-currentPlayer = player()
-currentLevelController = levelController()
-
-# testingPlatform = platform(64, 256, 100, 300)
-# testingPlatform2 = platform(64, 256, 500, 400)
-# testingPlatform3 = platform(64, 256, 300, 100)
-# testingPlatform4 = platform(256, 64, 700, 100)
-#
-# sgPlatforms = pygame.sprite.Group()
-# sgPlatforms.add(testingPlatform)
-# sgPlatforms.add(testingPlatform2)
-# sgPlatforms.add(testingPlatform3)
-# sgPlatforms.add(testingPlatform4)
-
-sgPlayer = pygame.sprite.Group()
-sgPlayer.add(currentPlayer)
-
-clock = pygame.time.Clock()
-dt = 0
 
 while gameRunning:
-    dt = clock.tick(60)
+    # If pressing escape, quit game
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             gameRunning = False
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_q:
+            if event.key == pygame.K_ESCAPE:
                 gameRunning = False
-
-    gameDisplay.fill((0, 0, 0))
-
-    text_surface, rect = freeTypeFont.render("1.05x", (40, 40, 40))
-    gameDisplay.blit(text_surface, (20, 20))
-
-    for entity in sgPlayer:
-        gameDisplay.blit(entity.surf, entity.rect)
-        entity.update()
-
-    currentLevelController.update()
-    pygame.display.update()
+    currentGameController.update()
 
 pygame.quit()
 quit()
