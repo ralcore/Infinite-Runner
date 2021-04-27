@@ -285,7 +285,7 @@ class levelController:
             self.loadedPlats[-1].add(platform(200, 100, 0, 400))
             self.loadedPlats[-1].add(platform(350, 50, 225, -50))
             self.loadedPlats[-1].add(platform(200, 100, 400, 400))
-            self.loadedPlats[-1].add(platform(350, 50, 625, 180))
+            self.loadedPlats[-1].add(platform(290, 50, 625, 180))
             self.loadedPlats[-1].add(platform(200, 100, 800, 400))
             self.loadedPlats[-1].add(platform(350, 50, 1025, -50))
             self.loadedPlats[-1].add(checkpoint(200, 100, 1200, 400))
@@ -370,10 +370,10 @@ class gameController:
         # If pressing escape, quit game
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                gameRunning = False
+                return False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    gameRunning = False
+                    return False
 
         # We always fill the screen black
         gameDisplay.fill((0, 0, 0))
@@ -386,8 +386,8 @@ class gameController:
                 self.startGame()
         if self.gameState == "playing":
             self.drawPlayingUI()
-            self.currentLevelController.update()
             self.currentPlayer.update()
+            self.currentLevelController.update()
             gameDisplay.blit(self.currentPlayer.surf, self.currentPlayer.rect)
         elif self.gameState == "dead":
             self.currentLevelController.update()
@@ -396,6 +396,7 @@ class gameController:
             if pressed_keys[pygame.K_RETURN]:
                 self.startGame()
         pygame.display.update()
+        return True
 
     def drawPlayingUI(self):
         text_surface, rect = freeTypeFontLarge.render(str(currentGameController.currentLevelController.moveSpeed / 2) + "x", (40, 40, 40))
@@ -420,14 +421,8 @@ currentGameController = gameController()
 gameRunning = True
 
 while gameRunning:
+    gameRunning = currentGameController.update()
     # If pressing escape, quit game
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            gameRunning = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                gameRunning = False
-    currentGameController.update()
 
 pygame.quit()
 quit()
